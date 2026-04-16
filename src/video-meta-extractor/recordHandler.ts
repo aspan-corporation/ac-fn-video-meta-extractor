@@ -25,13 +25,22 @@ export const recordHandler = async (
   const payload = record.body;
   assert(payload, "SQS record has no body");
 
-  const item = JSON.parse(payload);
-  const {
-    detail: {
-      object: { key: sourceKey, size },
-      bucket: { name: sourceBucket },
-    },
-  } = item as S3ObjectCreatedNotificationEvent;
+  let item: S3ObjectCreatedNotificationEvent;
+  try {
+    item = JSON.parse(payload) as S3ObjectCreatedNotificationEvent;
+  } catch (e) {
+    throw new Error(
+      `Failed to parse SQS record payload: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+
+  const sourceKey = item?.detail?.object?.key;
+  const size = item?.detail?.object?.size;
+  const sourceBucket = item?.detail?.bucket?.name;
+
+  assert(sourceKey, "Parsed event is missing required field: detail.object.key");
+  assert(size != null, "Parsed event is missing required field: detail.object.size");
+  assert(sourceBucket, "Parsed event is missing required field: detail.bucket.name");
 
   logger.debug("VideoMetaExtractionsStarted", { sourceKey });
   metrics.addMetric("VideoMetaExtractionsStarted", MetricUnit.Count, 1);
