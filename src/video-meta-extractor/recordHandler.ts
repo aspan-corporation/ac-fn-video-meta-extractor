@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { videoMetaExtractor } from "./videoMetaExtractor.ts";
 
 const metaTableName = assertEnvVar("AC_TAU_MEDIA_META_TABLE_NAME");
+const placeIndexName = assertEnvVar("AC_PLACE_INDEX_NAME");
 
 export const recordHandler = async (
   record: SQSRecord,
@@ -54,6 +55,7 @@ export const recordHandler = async (
     size,
     id: sourceKey,
     metaTableName,
+    placeIndexName,
     logger,
   });
 

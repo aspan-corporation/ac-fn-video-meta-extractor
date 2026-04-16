@@ -70,12 +70,12 @@ export const videoMetaExtractor = async ({
 };
 
 const extractFromJson = (parsed: any, logger: Logger): TagInput[] => {
-  const metaData: TagInput[] = [
+  const raw: Array<{ key: string; value: string | undefined }> = [
     { key: "duration", value: parsed.format.duration },
     { key: "bit_rate", value: parsed.format.bit_rate },
     { key: "creation_time", value: parsed.format.tags?.creation_time },
-    { key: "width", value: parsed.streams[0].width },
-    { key: "height", value: parsed.streams[0].height },
+    { key: "width", value: parsed.streams[0].width?.toString() },
+    { key: "height", value: parsed.streams[0].height?.toString() },
     { key: "video_codec_name", value: parsed.streams[0].codec_name },
     { key: "video_codec_long_name", value: parsed.streams[0].codec_long_name },
     { key: "avg_frame_rate", value: parsed.streams[0].avg_frame_rate },
@@ -94,7 +94,9 @@ const extractFromJson = (parsed: any, logger: Logger): TagInput[] => {
     ),
   ];
 
-  return metaData;
+  return raw.filter(
+    (tag): tag is TagInput => tag.value != null
+  );
 };
 
 function parseCoordinateString(input: string, logger: Logger): TagInput[] {

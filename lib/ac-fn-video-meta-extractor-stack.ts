@@ -15,10 +15,10 @@ export class AcFnVideoMetaExtractorStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Get FFprobe layer ARN from SSM
-    const ffprobeLayerArn = ssm.StringParameter.valueForStringParameter(
+    // Get FFmpeg layer ARN from SSM (includes both ffmpeg and ffprobe)
+    const ffmpegLayerArn = ssm.StringParameter.valueForStringParameter(
       this,
-      "/ac/layers/ffprobe/arn",
+      "/ac/layers/ffmpeg/arn",
     );
 
     // Get centralized log group from monitoring stack
@@ -43,12 +43,14 @@ export class AcFnVideoMetaExtractorStack extends cdk.Stack {
         memorySize: 3008,
         timeout: cdk.Duration.seconds(400),
         batchSize: 1,
-        maxReceiveCount: 10,
+        maxReceiveCount: 3,
+        reservedConcurrentExecutions: 5,
+
         layers: [
           lambda.LayerVersion.fromLayerVersionArn(
             this,
-            "FFprobeLayer",
-            ffprobeLayerArn,
+            "FFmpegLayer",
+            ffmpegLayerArn,
           ),
         ],
         environment: {
@@ -69,6 +71,7 @@ export class AcFnVideoMetaExtractorStack extends cdk.Stack {
               this,
               "/ac/iam/media-bucket-access-role-arn",
             ),
+          AC_PLACE_INDEX_NAME: "MyPlaceIndex",
         },
       },
     );
@@ -139,7 +142,7 @@ export class AcFnVideoMetaExtractorStack extends cdk.Stack {
         service: "geo",
         region: this.region,
         account: this.account,
-        resource: "place-index/TauPlaceIndex",
+        resource: "place-index/MyPlaceIndex",
       },
       this,
     );
