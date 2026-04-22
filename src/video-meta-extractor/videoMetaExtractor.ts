@@ -13,6 +13,9 @@ interface FfprobeOutput {
       creation_time?: string;
       location?: string;
       "com.apple.quicktime.location.ISO6709"?: string;
+      "com.apple.quicktime.make"?: string;
+      "com.apple.quicktime.model"?: string;
+      [key: string]: string | undefined;
     };
   };
   streams: Array<{
@@ -112,10 +115,13 @@ const extractFromJson = (parsed: FfprobeOutput, logger: Logger): TagInput[] => {
   const stream0 = parsed.streams[0];
   const stream1 = parsed.streams.length > 1 ? parsed.streams[1] : undefined;
 
+  const creationTime = parsed.format.tags?.creation_time;
+  const dateComponents = parseCreationTime(creationTime, logger);
+
   const raw: Array<{ key: string; value: string | undefined }> = [
     { key: "duration", value: parsed.format.duration },
     { key: "bit_rate", value: parsed.format.bit_rate },
-    { key: "creation_time", value: parsed.format.tags?.creation_time },
+    { key: "creation_time", value: creationTime },
     { key: "width", value: stream0.width?.toString() },
     { key: "height", value: stream0.height?.toString() },
     { key: "video_codec_name", value: stream0.codec_name },
@@ -134,12 +140,30 @@ const extractFromJson = (parsed: FfprobeOutput, logger: Logger): TagInput[] => {
       parsed.format.tags?.["com.apple.quicktime.location.ISO6709"] || "",
       logger,
     ),
+    ...dateComponents,
   ];
 
   return raw.filter(
     (tag): tag is TagInput => tag.value != null
   );
 };
+
+function parseCreationTime(input: string | undefined, logger: Logger): TagInput[] {
+  if (!input) return [];
+  try {
+    const d = new Date(input);
+    if (isNaN(d.getTime())) return [];
+    return [
+      { key: "dateCreated", value: d.toISOString() },
+      { key: "yearCreated", value: String(d.getUTCFullYear()) },
+      { key: "monthCreated", value: String(d.getUTCMonth() + 1) },
+      { key: "dayCreated", value: String(d.getUTCDate()) },
+    ];
+  } catch (e) {
+    logger.debug("Failed to parse creation_time", { input, error: e });
+    return [];
+  }
+}
 
 function parseCoordinateString(input: string, logger: Logger): TagInput[] {
   const regex = /([+-]\d+\.\d+)([+-]\d+\.\d+)([+-]\d+\.\d+)\//;
