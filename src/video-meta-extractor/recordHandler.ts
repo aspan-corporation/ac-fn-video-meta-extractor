@@ -57,10 +57,27 @@ export const recordHandler = async (
     logger,
   });
 
+  // Attach yearImported / monthImported from the object's LastModified timestamp.
+  const importTags: Array<{ key: string; value: string }> = [];
+  try {
+    const head = await sourceS3Service.headObject({ Bucket: sourceBucket, Key: sourceKey });
+    if (head.LastModified) {
+      importTags.push(
+        { key: "yearImported", value: String(head.LastModified.getUTCFullYear()) },
+        { key: "monthImported", value: String(head.LastModified.getUTCMonth() + 1) },
+      );
+    }
+  } catch (err) {
+    logger.warn("HeadObjectFailed — import tags will be skipped", {
+      sourceKey,
+      reason: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   await processMeta({
     dynamoDBService,
     locationService,
-    meta,
+    meta: [...meta, ...importTags],
     size,
     id: sourceKey,
     metaTableName,
