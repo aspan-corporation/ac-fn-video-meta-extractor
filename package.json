@@ -49,6 +49,6 @@
     "typescript-eslint": "^8.47.0"
   },
   "dependencies": {
-    "@aspan-corporation/ac-shared": "^1.2.25"
+    "@aspan-corporation/ac-shared": "^1.2.29"
   }
 }
