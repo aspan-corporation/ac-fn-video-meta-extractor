@@ -1,6 +1,7 @@
 import {
   AcContext,
   assertEnvVar,
+  hintFallbackTags,
   isAllowedVideoExtension,
   MetricUnit,
   processMeta,
@@ -11,13 +12,18 @@ import { videoMetaExtractor } from "./videoMetaExtractor.ts";
 
 const metaTableName = assertEnvVar("AC_TAU_MEDIA_META_TABLE_NAME");
 const placeIndexName = assertEnvVar("AC_PLACE_INDEX_NAME");
+// In-account bucket holding diary-uploaded videos. When the event names this
+// bucket the source must be read with the Lambda's own role, not the
+// cross-account media read-access role.
+const diaryBucketName = process.env.AC_DIARY_BUCKET_NAME;
 
 export const recordHandler = async (
   record: SQSRecord,
   context: AcContext,
 ): Promise<void> => {
   const { logger, metrics, acServices = {} } = context;
-  const { sourceS3Service, locationService, dynamoDBService } = acServices;
+  const { sourceS3Service, locationService, dynamoDBService, localS3Service } =
+    acServices;
   assert(sourceS3Service, "sourceS3Service is required in context.acServices");
   assert(locationService, "locationService is required in context.acServices");
   assert(dynamoDBService, "dynamoDBService is required in context.acServices");
@@ -38,9 +44,18 @@ export const recordHandler = async (
   const size = item?.detail?.object?.size;
   const sourceBucket = item?.detail?.bucket?.name;
 
-  assert(sourceKey, "Parsed event is missing required field: detail.object.key");
-  assert(size != null, "Parsed event is missing required field: detail.object.size");
-  assert(sourceBucket, "Parsed event is missing required field: detail.bucket.name");
+  assert(
+    sourceKey,
+    "Parsed event is missing required field: detail.object.key",
+  );
+  assert(
+    size != null,
+    "Parsed event is missing required field: detail.object.size",
+  );
+  assert(
+    sourceBucket,
+    "Parsed event is missing required field: detail.bucket.name",
+  );
 
   logger.debug("VideoMetaExtractionsStarted", { sourceKey });
   metrics.addMetric("VideoMetaExtractionsStarted", MetricUnit.Count, 1);
@@ -50,22 +65,50 @@ export const recordHandler = async (
     `extension for ${sourceKey} is not supported`,
   );
 
+  // Pick the read client by source bucket: the diary bucket lives in this
+  // account (Lambda's own role); everything else is the cross-account media
+  // bucket reached via the assumed read-access role.
+  const readS3Service =
+    diaryBucketName && sourceBucket === diaryBucketName
+      ? (localS3Service ?? sourceS3Service)
+      : sourceS3Service;
+
   const meta = await videoMetaExtractor({
     sourceBucket,
     sourceKey,
-    sourceS3Service,
+    sourceS3Service: readS3Service,
     logger,
   });
 
-  // Attach yearImported / monthImported from the object's LastModified timestamp.
+  // Attach yearImported / monthImported from the object's LastModified
+  // timestamp, and fall back to device hints (x-amz-meta-hint-*, set by the
+  // diary upload flow) for date/GPS ffprobe didn't find — mobile OSes strip
+  // this metadata from files handed to web pages.
   const importTags: Array<{ key: string; value: string }> = [];
+  const hintTags: Array<{ key: string; value: string }> = [];
   try {
-    const head = await sourceS3Service.headObject({ Bucket: sourceBucket, Key: sourceKey });
+    const head = await readS3Service.headObject({
+      Bucket: sourceBucket,
+      Key: sourceKey,
+    });
     if (head.LastModified) {
       importTags.push(
-        { key: "yearImported", value: String(head.LastModified.getUTCFullYear()) },
-        { key: "monthImported", value: String(head.LastModified.getUTCMonth() + 1) },
+        {
+          key: "yearImported",
+          value: String(head.LastModified.getUTCFullYear()),
+        },
+        {
+          key: "monthImported",
+          value: String(head.LastModified.getUTCMonth() + 1),
+        },
       );
+    }
+    hintTags.push(...hintFallbackTags(meta, head.Metadata));
+    if (hintTags.length > 0) {
+      logger.debug("DeviceHintFallbackApplied", {
+        sourceKey,
+        keys: hintTags.map((t) => t.key),
+      });
     }
   } catch (err) {
     logger.warn("HeadObjectFailed — import tags will be skipped", {
@@ -77,7 +120,7 @@ export const recordHandler = async (
   await processMeta({
     dynamoDBService,
     locationService,
-    meta: [...meta, ...importTags],
+    meta: [...meta, ...hintTags, ...importTags],
     size,
     id: sourceKey,
     metaTableName,

@@ -143,12 +143,13 @@ const extractFromJson = (parsed: FfprobeOutput, logger: Logger): TagInput[] => {
     ...dateComponents,
   ];
 
-  return raw.filter(
-    (tag): tag is TagInput => tag.value != null
-  );
+  return raw.filter((tag): tag is TagInput => tag.value != null);
 };
 
-function parseCreationTime(input: string | undefined, logger: Logger): TagInput[] {
+function parseCreationTime(
+  input: string | undefined,
+  logger: Logger,
+): TagInput[] {
   if (!input) return [];
   try {
     const d = new Date(input);

@@ -16,7 +16,7 @@
     "destroy": "cdk destroy",
     "bootstrap": "cdk bootstrap",
     "unit": "jest",
-    "lint": "eslint '*.ts' --quiet --fix",
+    "lint": "eslint '**/*.ts' --quiet --fix",
     "compile": "tsc",
     "test": "npm run compile && npm run unit",
     "start:local": "ts-node-esm",
@@ -49,6 +49,6 @@
     "typescript-eslint": "^8.47.0"
   },
   "dependencies": {
-    "@aspan-corporation/ac-shared": "^1.2.36"
+    "@aspan-corporation/ac-shared": "^1.2.39"
   }
 }

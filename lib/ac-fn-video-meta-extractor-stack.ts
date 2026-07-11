@@ -71,6 +71,13 @@ export class AcFnVideoMetaExtractorStack extends cdk.Stack {
               this,
               "/ac/iam/media-bucket-access-role-arn",
             ),
+          // In-account diary bucket holding diary-uploaded videos. Read with
+          // the Lambda's own role (granted below), not the cross-account
+          // media role.
+          AC_DIARY_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
+            this,
+            "/ac/storage/diary-bucket-name",
+          ),
           AC_PLACE_INDEX_NAME: "MyPlaceIndex",
         },
       },
@@ -164,13 +171,36 @@ export class AcFnVideoMetaExtractorStack extends cdk.Stack {
       }),
     );
 
-    // Store the queue URL in SSM Parameter Store for external access
+    // Allow Lambda to read diary-uploaded source videos from the in-account
+    // diary bucket (the cross-account media role can't reach it).
+    const diaryBucketArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      "/ac/storage/diary-bucket-arn",
+    );
+
+    videoMetaExtractorProcessor.processor.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["s3:GetObject"],
+        resources: [`${diaryBucketArn}/*`],
+      }),
+    );
+
+    // Store the queue URL and ARN in SSM Parameter Store for external access
     new ssm.StringParameter(
       this,
       "VideoMetaExtractorProcessorQueueUrlParameter",
       {
         parameterName: "/ac/video-meta-extractor/queue-url",
         stringValue: videoMetaExtractorProcessor.queue.queueUrl,
+      },
+    );
+
+    new ssm.StringParameter(
+      this,
+      "VideoMetaExtractorProcessorQueueArnParameter",
+      {
+        parameterName: "/ac/video-meta-extractor/queue-arn",
+        stringValue: videoMetaExtractorProcessor.queue.queueArn,
       },
     );
   }
